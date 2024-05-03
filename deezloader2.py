@@ -74,13 +74,7 @@ class Login2(deezloader.Login):
             utils.check_dir(directory)
 
             if isfile(name):
-                if recursive_download:
-                    return name
-
-                ans = input("Track %s already exists, do you want to redownload it?(y or n):" % name)
-
-                if not ans in answers:
-                    return name
+                return name
 
             decrypted_audio = open(name, "wb")
 

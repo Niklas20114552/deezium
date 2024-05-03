@@ -1,0 +1,23 @@
+# Maintainer: Niklas20114552 <niklas.deppermann@outlook.com>
+pkgname="deezium"
+pkgver=1.0
+pkgrel=1
+pkgdesc="A python based alternative open-source front-end for Deezer"
+arch=(any)
+license=("MIT")
+depends=('python' 'python-deezer-python' 'python-deezloader-2020.11.26')
+url="https://github.com/Niklas20114552/deezium"
+source=("git+https://github.com/Niklas20114552/deezium.git")
+sha256sums=('SKIP')
+
+package() {
+	cd "$srcdir/deezium"
+	install -Dm755 "main.py" ${pkgdir}/usr/bin/deezium
+	install -Dm644 "deezium_api.py" ${pkgdir}/usr/share/deezium/deezium_api.py
+	install -Dm644 "deezer_logo.png" ${pkgdir}/usr/share/deezium/deezer_logo.png
+	install -Dm644 "deezium128.png" ${pkgdir}/usr/share/deezium/deezium128.png
+	install -Dm644 "deezium256.png" ${pkgdir}/usr/share/deezium/deezium256.png
+	install -Dm644 "favorite.png" ${pkgdir}/usr/share/deezium/favorite.png
+	install -Dm644 "deezium.png" ${pkgdir}/usr/share/deezium/deezium.png
+	install -Dm644 "deezium.desktop" ${pkgdir}/usr/share/applications/
+}

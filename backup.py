@@ -251,7 +251,8 @@ class MainWindow(QMainWindow):
             
         def continuelogin():
             if arl_input.isEnabled():
-                open(os.path.expanduser('~/.config/deezium/arl.dat'), 'w').write(arl_input.text())
+                with open(os.path.expanduser('~/.config/deezium/arl.dat'), 'w') as f:
+                    f.write(arl_input.text())
             self.update_config()
             if bool(self.config_arl) and bool(self.config_aro):
                 self.login()
