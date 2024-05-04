@@ -8,4 +8,4 @@ Hidden=false
 Icon=/usr/share/deezium/deezium.png
 Keywords=deezer;music;streaming
 Categories=Audio
-Comment=A open source client for the deezer music streaming platform
+Comment=An alternative lightweight graphical front-end for Deezer

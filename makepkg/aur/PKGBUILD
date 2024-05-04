@@ -14,6 +14,7 @@ package() {
 	cd "$srcdir/deezium"
 	install -Dm755 "main.py" ${pkgdir}/usr/bin/deezium
 	install -Dm644 "deezium_api.py" ${pkgdir}/usr/share/deezium/deezium_api.py
+	install -Dm644 "oauth.py" ${pkgdir}/usr/share/deezium/oauth.py
 	install -Dm644 "deezer_logo.png" ${pkgdir}/usr/share/deezium/deezer_logo.png
 	install -Dm644 "deezium128.png" ${pkgdir}/usr/share/deezium/deezium128.png
 	install -Dm644 "deezium256.png" ${pkgdir}/usr/share/deezium/deezium256.png

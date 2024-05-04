@@ -1,5 +1,6 @@
-from deezloader2 import Login2 as DWLogin
-import deezloader
+from importlib.util import spec_from_file_location, module_from_spec
+import platform
+import sys
 import deezer
 import os as _os
 import requests
@@ -7,6 +8,19 @@ import numpy as _numpy
 import cv2 as _cv2
 import math as _math
 from glob import glob as _glob
+
+if platform.system() == 'Windows':
+    APP_DATA_PATH: str = "C:\\Program Files\\Deezium\\"
+elif platform.system() == 'Linux':
+    APP_DATA_PATH: str = '/usr/share/deezium/'
+else:
+    print('Sorry, but your Operating System is not supported.')
+    sys.exit()
+
+import_spec = spec_from_file_location('deezloader2', APP_DATA_PATH + 'deezloader2.py')
+deezloader2 = module_from_spec(import_spec)
+sys.modules['deezloader2'] = deezloader2
+import_spec.loader.exec_module(deezloader2)
 
 
 def _sectime(time: int) -> str:
@@ -31,10 +45,10 @@ def get_oauth_token():
     return False
 
 
-def gen_oauth_token(forced: bool = False):
+def gen_oauth_token(datapath: str, forced: bool = False):
     _os.makedirs(_os.path.expanduser('~/.config/deezium'), exist_ok=True)
     if (not _os.path.exists(_os.path.expanduser('~/.config/deezium/aro.dat'))) or forced:
-        _os.system('python3 oauth.py')
+        _os.system(f'python3 {datapath}oauth.py')
 
 
 def get_login_token():
@@ -45,7 +59,7 @@ def get_login_token():
     return False
 
 
-def download_track(login: DWLogin, id, quality="MP3_128") -> str:
+def download_track(login: deezloader2.Login2, id, quality="MP3_128") -> str:
     fmat = '.mp3'
     if quality == 'FLAC':
         fmat = '.flac'

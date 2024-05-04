@@ -6,6 +6,8 @@ An alternative open-source lightweight graphical front-end for [Deezer](https://
 
 This application is currently in alpha state! It is just open source to provide the ability to report bugs and help me with coding.
 
+Also not every button does something currently.
+
 ## How to install
 
 **Currently you don't**, if you don't like to tinker arround.

@@ -1,0 +1,8 @@
+deezloader~=2020.11.26
+requests~=2.31.0
+PyQt5~=5.15.9
+PyQtWebEngine~=5.15.6
+numpy~=1.24.3
+tqdm~=4.66.2
+deezer-python~=6.1.1
+opencv-python~=4.9.0.80

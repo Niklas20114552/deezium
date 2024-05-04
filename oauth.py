@@ -20,7 +20,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         cd = _pathval(self.path, 'code')
         if cd:
             self.wfile.write(b'Valid. You may close this tab now')
-            print('[F> OAuth - Valid')
+            print('[D> OAuth - Valid')
             _returnval(cd)
             return
         self.wfile.write(b'Something went wrong. You may close this tab now')
@@ -40,6 +40,6 @@ def _returnval(rturnval):
     sys.exit()
 
 hserver = socketserver.TCPServer(('localhost', 3875), _RequestHandler)
-print('Serving')
+print('[D> OAuth - Serving]')
 hserver.handle_request()
 hserver.server_close()
