@@ -22,6 +22,17 @@ deezloader2 = module_from_spec(import_spec)
 sys.modules['deezloader2'] = deezloader2
 import_spec.loader.exec_module(deezloader2)
 
+from mpris_server.adapters import MprisAdapter
+from mpris_server.events import EventAdapter
+from mpris_server.server import Server
+from mpris_server import Metadata
+
+
+class MprisAppAdapter(MprisAdapter):
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+
 
 def _sectime(time: int) -> str:
     if time <= 9:
@@ -33,6 +44,7 @@ def _sectime(time: int) -> str:
 def convert_sec_to_min(sec):
     ms = sec * 1000
     return ms_to_str(ms)
+
 
 def _rgb_to_hex(rgb: tuple) -> str: return "#{:02x}{:02x}{:02x}".format(rgb[0], rgb[1], rgb[2])
 

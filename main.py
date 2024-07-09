@@ -1,6 +1,7 @@
 #!/usr/bin/python3
-import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re
-from PyQt5.QtCore import QUrl, pyqtSignal, Qt
+import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re, gi
+gi.require_version('GLib', '2.0')
+from PyQt5.QtCore import QUrl, pyqtSignal, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtGui import QIcon, QFont, QPixmap, QCursor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, \
@@ -9,6 +10,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtNetwork import QNetworkCookie
 from configparser import ConfigParser
 from importlib.util import module_from_spec, spec_from_file_location
+from gi.repository import GLib
 
 config = ConfigParser()
 APP_DEVMODE: bool = False
@@ -746,15 +748,13 @@ class MainWindow(QMainWindow):
         def process_added_cookie(cookie):
             """Processes a cookie of the cookie store to find an deezer arl cookie to store and use for login later"""
             cookie = QNetworkCookie(cookie)
-            jsonarr = {"name": bytearray(cookie.name()).decode(), "domain": cookie.domain(),
-                       "value": bytearray(cookie.value()).decode(),
-                       "path": cookie.path(), "expirationDate": cookie.expirationDate().toString(Qt.ISODate),
-                       "secure": cookie.isSecure(),
-                       "httponly": cookie.isHttpOnly()}
-            if jsonarr['name'] == 'arl' and jsonarr['domain'] == '.deezer.com' and len(jsonarr['value']) == 192:
+            name = bytearray(cookie.name()).decode()
+            domain = cookie.domain()
+            value = bytearray(cookie.value()).decode()
+            if name == 'arl' and domain == '.deezer.com' and len(value) == 192:
                 print('[D> Arl found and imported.')
                 with open(os.path.expanduser('~/.config/deezium/arl.dat'), 'w') as f:
-                    f.write(jsonarr['value'])
+                    f.write(value)
 
         def load_finished():
             """Runs when the html was fully loaded and calls the parser with parts out of the html"""
@@ -1369,7 +1369,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if not self.closeLocked:
-            os.remove(os.path.expanduser('~/.cache/deezium/.cache'))
+            if os.path.exists(os.path.expanduser('~/.cache/deezium/.cache')):
+                os.remove(os.path.expanduser('~/.cache/deezium/.cache'))
             self.save_history()
             super().closeEvent(event)
         else:
@@ -1383,6 +1384,12 @@ def format_traceback(trb: str):
     sys.exit()
 
 
+def glib_mainloop_iteration(loop):
+    # Single iteration of the GLib main loop
+    loop.get_context().iteration(False)
+    return True
+
+
 def main(argv):
     app = QApplication(sys.argv)
     app.setDesktopFileName('deezium')
@@ -1390,6 +1397,17 @@ def main(argv):
     try:
         deezium = MainWindow()
         deezium.show()
+
+        my_adapter = api.MprisAppAdapter(window=deezium)
+        mpris = api.Server('Deezium', adapter=my_adapter)
+
+        # initialize app integration with mpris
+        event_handler = api.AppEventHandler(root=mpris.root, player=mpris.player)
+
+        timer = QTimer()
+        timer.timeout.connect(glib_mainloop_iteration)
+        timer.start(10)
+
     except Exception:
         trb = traceback.format_exc()
         format_traceback(trb)

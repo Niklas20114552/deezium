@@ -40,6 +40,6 @@ def _returnval(rturnval):
     sys.exit()
 
 hserver = socketserver.TCPServer(('localhost', 3875), _RequestHandler)
-print('[D> OAuth - Serving]')
+print('[D> OAuth - Serving')
 hserver.handle_request()
 hserver.server_close()
