@@ -2,9 +2,10 @@
 
 An alternative open-source lightweight graphical front-end for [Deezer](https://deezer.com).
 
-## Currently alpha!
+## Currently early release!
 
-This application is currently in alpha state! It is just open source to provide the ability to report bugs and help me with coding.
+This application is currently in an early release state!
+Not every important feature of the official deezer app is already present.
 
 Also not every button does something currently.
 
