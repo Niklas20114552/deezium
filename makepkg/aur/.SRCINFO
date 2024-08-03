@@ -1,0 +1,14 @@
+pkgbase = deezium
+	pkgdesc = A python based alternative open-source front-end for Deezer
+	pkgver = 1.0
+	pkgrel = 1
+	url = https://github.com/Niklas20114552/deezium
+	arch = any
+	license = MIT
+	depends = python
+	depends = python-deezer-python
+	depends = python-deezloader-2020.11.26
+	source = git+https://github.com/Niklas20114552/deezium.git
+	sha256sums = SKIP
+
+pkgname = deezium

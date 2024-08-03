@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Deezium
+Exec=deezium
+Path=/usr/share/deezium
+Terminal=false
+Hidden=false
+Icon=/usr/share/deezium/deezium.png
+Keywords=deezer;music;streaming
+Categories=Audio
+Comment=An alternative lightweight graphical front-end for Deezer
