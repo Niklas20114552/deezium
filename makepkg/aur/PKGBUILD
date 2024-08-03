@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="A python based alternative open-source front-end for Deezer"
 arch=(any)
 license=("MIT")
-depends=('python' 'python-deezer-python' 'python-deezloader-2020.11.26')
+depends=('python' 'python-deezer-python' 'python-deezloader-2020.11.26' 'python-setuptools' 'python-requests' 'python-pyqt5' 'python-pyqt5-webengine' 'python-numpy' 'python-tqdm' 'python-gobject', 'python-opencv')
 url="https://github.com/Niklas20114552/deezium"
 source=("git+https://github.com/Niklas20114552/deezium.git")
 sha256sums=('SKIP')
@@ -13,7 +13,9 @@ sha256sums=('SKIP')
 package() {
 	cd "$srcdir/deezium"
 	install -Dm755 "main.py" ${pkgdir}/usr/bin/deezium
+	install -Dm755 "svgs" ${pkgdir}/usr/share/deezium/svgs
 	install -Dm644 "deezium_api.py" ${pkgdir}/usr/share/deezium/deezium_api.py
+	install -Dm644 "deezloader2.py" ${pkgdir}/usr/share/deezium/deezium_api.py
 	install -Dm644 "oauth.py" ${pkgdir}/usr/share/deezium/oauth.py
 	install -Dm644 "deezer_logo.png" ${pkgdir}/usr/share/deezium/deezer_logo.png
 	install -Dm644 "deezium128.png" ${pkgdir}/usr/share/deezium/deezium128.png

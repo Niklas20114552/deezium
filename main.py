@@ -1,16 +1,15 @@
 #!/usr/bin/python3
-import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re, gi
-gi.require_version('GLib', '2.0')
-from PyQt5.QtCore import QUrl, pyqtSignal, QTimer
+import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re
+from PyQt5.QtCore import QUrl, pyqtSignal, Qt  # , QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtGui import QIcon, QFont, QPixmap, QCursor
+from PyQt5.QtGui import QIcon, QFont, QPixmap, QCursor, QPainter
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, \
     QLineEdit, QSlider, QProgressBar, QGroupBox, QScrollArea, QFrame, QCheckBox, QDialog, QTextEdit, QMenu
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtNetwork import QNetworkCookie
+from PyQt5.QtSvg import QSvgRenderer
 from configparser import ConfigParser
 from importlib.util import module_from_spec, spec_from_file_location
-from gi.repository import GLib
 
 config = ConfigParser()
 APP_DEVMODE: bool = False
@@ -36,6 +35,22 @@ if not APP_DEVMODE:
     import_spec.loader.exec_module(api)
 else:
     import deezium_api as api
+
+
+def create_colored_svg(svg_filename: str, text_color):
+    renderer = QSvgRenderer(svg_filename)
+    image_size = renderer.defaultSize()
+    image = QPixmap(image_size)
+    image.fill(Qt.transparent)  # Ensure transparency
+
+    painter = QPainter(image)
+    renderer.render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(image.rect(), text_color)
+    painter.end()
+
+    return image
+
 
 class NoArlDialog(QDialog):
     def __init__(self) -> None:
@@ -305,9 +320,8 @@ class QTrackList(QWidget):
             text_label.mousePressEvent = lambda event, track_id=track['dpy-track'].id: (
                 self.track_clicked.emit(track_id))
             duration = QLabel(f" (<i>{round(track['length'] / 60)} min long</i>)")
-            show_menu_button = QPushButton('')
+            show_menu_button = SVGButton('more')
             show_menu_button.setFixedSize(30, 30)
-            show_menu_button.setFont(QFont('Material Icons', 12))
             show_menu_button.clicked.connect(openmenu)
 
             if self.show_icons:
@@ -383,6 +397,33 @@ class QPlayList(QWidget):
             self.main_layout.addLayout(row)
 
 
+class SVGButton(QPushButton):
+    def __init__(self, svg_filename):
+        super().__init__()
+        self.text_color = self.palette().color(self.foregroundRole())
+        self.svg_filename = ''
+        self.icon = QIcon()
+        self.set_icon(svg_filename)
+
+    def set_icon(self, svg_filename):
+        self.svg_filename = f"{APP_DATA_PATH}svgs/{svg_filename}.svg"
+        self.icon = QIcon(create_colored_svg(self.svg_filename, self.text_color))
+        self.setIcon(self.icon)
+
+
+class SVGLabel(QLabel):
+    def __init__(self, svg_filename):
+        super().__init__()
+        self.text_color = self.palette().color(self.foregroundRole())
+        self.svg_filename = ''
+        self.icon = QIcon()
+        self.set_icon(svg_filename)
+
+    def set_icon(self, svg_filename):
+        self.svg_filename = f"{APP_DATA_PATH}svgs/{svg_filename}.svg"
+        self.setPixmap(create_colored_svg(self.svg_filename, self.text_color))
+
+
 class ProgressDialog(QDialog):
     def __init__(self, text):
         super().__init__()
@@ -425,20 +466,16 @@ class MainWindow(QMainWindow):
         self.play_nowplaying = QLabel()
         self.play_seeker = QSlider(1)
         self.play_seeker.setMinimumWidth(400)
-        self.play_pauseb = QPushButton('')
+        self.play_pauseb = SVGButton('play')
         self.play_pauseb.setFixedSize(30, 30)
-        self.play_pauseb.setFont(QFont('Material Icons', 12))
-        self.play_forb = QPushButton('')
-        self.play_preb = QPushButton('')
+        self.play_forb = SVGButton('next')
+        self.play_preb = SVGButton('prev')
         self.play_forb.setFixedSize(30, 30)
         self.play_preb.setFixedSize(30, 30)
-        self.play_forb.setFont(QFont('Material Icons', 12))
-        self.play_preb.setFont(QFont('Material Icons', 12))
-        self.play_loopb = QPushButton('')
+        self.play_loopb = SVGButton('repeat')
         self.play_loopb.setFixedSize(30, 30)
         self.play_state = QLabel()
-        self.play_volume_indicator = QLabel('')
-        self.play_volume_indicator.setFont(QFont('Material Icons', 12))
+        self.play_volume_indicator = SVGLabel('volume')
         self.play_volume = QSlider(1)
         self.play_volume.setRange(10, 100)
         self.play_volume.setValue(75)
@@ -488,7 +525,7 @@ class MainWindow(QMainWindow):
                 self.player.setPosition(data['position'])
                 self.player.setVolume(data['volume'])
                 self.play_volume.setValue(data['volume'])
-                # self.play_seeker.setValue(data['position'])
+                self.play_seeker.setValue(data['position'])
             except KeyError:
                 print('[E> Invalid State removed')
                 os.remove(os.path.expanduser('~/.config/deezium/lastplay'))
@@ -512,11 +549,11 @@ class MainWindow(QMainWindow):
 
     def update_loopbutton(self):
         if self.play_looping == 0:
-            self.play_loopb.setText('')
+            self.play_loopb.set_icon('repeat')
         elif self.play_looping == 1:
-            self.play_loopb.setText('')
+            self.play_loopb.set_icon('repeat_on')
         elif self.play_looping == 2:
-            self.play_loopb.setText('')
+            self.play_loopb.set_icon('repeat_one')
 
     def skip_forward(self, by=1):
         if not by:
@@ -591,9 +628,9 @@ class MainWindow(QMainWindow):
 
     def update_player(self, state):
         if state == QMediaPlayer.PlayingState:
-            self.play_pauseb.setText('')
+            self.play_pauseb.set_icon('pause')
         else:
-            self.play_pauseb.setText('')
+            self.play_pauseb.set_icon('play')
         index = self.play_currentlist.index(self.play_currenttrack)
         self.play_preb.setDisabled(index == 0)
         self.play_forb.setDisabled((index == len(self.play_currentlist)) or (self.play_looping == 2))
@@ -650,6 +687,7 @@ class MainWindow(QMainWindow):
 
     def init_sessions(self):
         """Initializes the two online api sessions and if necessary kick back to log in"""
+        os.makedirs(os.path.expanduser('~/.cache/deezium/'), exist_ok=True)
         os.chdir(os.path.expanduser('~/.cache/deezium/'))
         logout = False
         if not self.deezdw_session:
@@ -727,7 +765,7 @@ class MainWindow(QMainWindow):
             if html is None:
                 self.closeLocked = False
                 return
-            match = re.match('Error: ([a-zA-Z]*)\. You may close this tab now', html)
+            match = re.match('Error: ([a-zA-Z]*). You may close this tab now', html)
             if html == 'Valid. You may close this tab now':
                 self.closeLocked = False
                 self.update_config()
@@ -746,7 +784,7 @@ class MainWindow(QMainWindow):
                 self.createLoginFailedPage(match.groups()[0])
 
         def process_added_cookie(cookie):
-            """Processes a cookie of the cookie store to find an deezer arl cookie to store and use for login later"""
+            """Processes a cookie of the cookie store to find a deezer arl cookie to store and use for login later"""
             cookie = QNetworkCookie(cookie)
             name = bytearray(cookie.name()).decode()
             domain = cookie.domain()
@@ -884,9 +922,8 @@ class MainWindow(QMainWindow):
         searchbar = QLineEdit()
         searchbar.setPlaceholderText('Search for music and audiobooks')
         searchbutton = QPushButton('Search')
-        settings_button = QPushButton("")
+        settings_button = SVGButton('settings')
         settings_button.setFixedSize(30, 30)
-        settings_button.setFont(QFont('Material Icons', 12))
         settings_button.clicked.connect(self.createSettingsPage)
         title_layout.addWidget(searchbar)
         title_layout.addWidget(searchbutton)
@@ -975,8 +1012,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = QPushButton('')
-        back_button.setFont(QFont('Material Icons', 12))
+        back_button = SVGButton('back')
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
@@ -1087,8 +1123,7 @@ class MainWindow(QMainWindow):
         trackids = api.conv_paginated_ids(tracks)
 
         title_layout = QHBoxLayout()
-        back_button = QPushButton('')
-        back_button.setFont(QFont('Material Icons', 12))
+        back_button = SVGButton('back')
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
@@ -1143,8 +1178,8 @@ class MainWindow(QMainWindow):
 
         track_widget = QTrackList(trackids, deezerclient=self.deezpy_session, show_album=False)
         track_widget.track_clicked.connect(playitem)
-        #track_widget.add_playlist.
-        #track_widget.add_queue.
+        # track_widget.add_playlist.
+        # track_widget.add_queue.
         track_widget.toggle_fav.connect(self.toggle_favorite_track)
 
         search_layout.addWidget(track_widget)
@@ -1192,8 +1227,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = QPushButton('')
-        back_button.setFont(QFont('Material Icons', 12))
+        back_button = SVGButton('back')
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
@@ -1290,8 +1324,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = QPushButton('')
-        back_button.setFont(QFont('Material Icons', 12))
+        back_button = SVGButton('back')
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
@@ -1384,12 +1417,6 @@ def format_traceback(trb: str):
     sys.exit()
 
 
-def glib_mainloop_iteration(loop):
-    # Single iteration of the GLib main loop
-    loop.get_context().iteration(False)
-    return True
-
-
 def main(argv):
     app = QApplication(sys.argv)
     app.setDesktopFileName('deezium')
@@ -1398,15 +1425,23 @@ def main(argv):
         deezium = MainWindow()
         deezium.show()
 
-        my_adapter = api.MprisAppAdapter(window=deezium)
-        mpris = api.Server('Deezium', adapter=my_adapter)
+        if api.MprisAppAdapter:
+            import gi
+            gi.require_version('GLib', '2.0')
+            from gi.repository import GLib
 
-        # initialize app integration with mpris
-        event_handler = api.AppEventHandler(root=mpris.root, player=mpris.player)
+            def glib_mainloop_iteration(loop):
+                # Single iteration of the GLib main loop
+                loop.get_context().iteration(False)
+                return True
+            # my_adapter = api.MprisAppAdapter(window=deezium)
+            # mpris = api.Server('Deezium', adapter=my_adapter)
+            # event_handler = api.AppEventHandler(root=mpris.root, player=mpris.player)
 
-        timer = QTimer()
-        timer.timeout.connect(glib_mainloop_iteration)
-        timer.start(10)
+            # main_loop = GLib.MainLoop()
+            # timer = QTimer()
+            # timer.timeout.connect(lambda: glib_mainloop_iteration(main_loop))
+            # timer.start(10)
 
     except Exception:
         trb = traceback.format_exc()

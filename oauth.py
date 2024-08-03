@@ -1,5 +1,4 @@
 import http.server, re, socketserver, sys, os, requests
-from typing import Any
 
 def _pathval(path, name):
     pattern = re.compile(rf'[\&|\?]{name}=([^\&\#]+)')

@@ -1,8 +1,12 @@
+# Linux and Mac only: Prefer to install all those packages using your system package manager
+
+setuptools~=72.1.0
+distutils~=1.0; sys_platform=='win32'
 deezloader~=2020.11.26
-requests~=2.31.0
+requests~=2.32.3
 PyQt5~=5.15.9
 PyQtWebEngine~=5.15.6
-numpy~=1.24.3
+numpy~=1.26.4
 tqdm~=4.66.2
 deezer-python~=6.1.1
 mpris-server~=0.4.2

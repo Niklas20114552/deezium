@@ -22,16 +22,21 @@ deezloader2 = module_from_spec(import_spec)
 sys.modules['deezloader2'] = deezloader2
 import_spec.loader.exec_module(deezloader2)
 
-from mpris_server.adapters import MprisAdapter
-from mpris_server.events import EventAdapter
-from mpris_server.server import Server
-from mpris_server import Metadata
+MprisAppAdapter = None
+try:
+    from mpris_server.adapters import MprisAdapter
+    from mpris_server.events import EventAdapter
+    from mpris_server.server import Server
+    from mpris_server import Metadata
 
-
-class MprisAppAdapter(MprisAdapter):
-    def __init__(self, window):
-        super().__init__()
-        self.window = window
+    class MprisAppAdapter(MprisAdapter):
+        def __init__(self, window):
+            super().__init__()
+            self.window = window
+except ImportError:
+    print('[D> Mpris_server not found')
+finally:
+    print('[D> Mpris_server found')
 
 
 def _sectime(time: int) -> str:
@@ -60,7 +65,7 @@ def get_oauth_token():
 def gen_oauth_token(datapath: str, forced: bool = False):
     _os.makedirs(_os.path.expanduser('~/.config/deezium'), exist_ok=True)
     if (not _os.path.exists(_os.path.expanduser('~/.config/deezium/aro.dat'))) or forced:
-        _os.system(f'python3 {datapath}oauth.py')
+        _os.system(f'python{'3' if platform.system() != 'Windows' else ''} "{datapath}oauth.py"')
 
 
 def get_login_token():
@@ -191,7 +196,7 @@ def calc_background_color(data: bytes) -> str:
 
 def calc_foreground_color(hexstr: str) -> str:
     rgb = tuple(int(hexstr.removeprefix('#')[i:i+2], 16) for i in (0, 2, 4))
-    if (rgb[0] and rgb[1] and rgb[2]) >= 110:
+    if (rgb[0] and rgb[1] and rgb[2]) >= 150:
         return '#000000'
     return '#FFFFFF'
 
