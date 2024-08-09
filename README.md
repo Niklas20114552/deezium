@@ -11,6 +11,12 @@ Also not every button does something currently.
 
 ## How to install
 
+### Linux/macOS (or PearOS)
+
 **Currently you don't**, if you don't like to tinker arround.
 
 As this is in alpha state, I'm not providing installation instructions.
+
+### Windows
+
+See the releases tab on the sidebar.
