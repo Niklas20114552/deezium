@@ -12,11 +12,10 @@ else:
     print("Sorry, but your Operating System is not supported.")
     sys.exit()
 
-import_spec = spec_from_file_location('deezloader2', APP_DATA_PATH + 'deezloader2.py')
+import_spec = spec_from_file_location("deezloader2", APP_DATA_PATH + "deezloader2.py")
 deezloader2 = module_from_spec(import_spec)
-sys.modules['deezloader2'] = deezloader2
+sys.modules["deezloader2"] = deezloader2
 import_spec.loader.exec_module(deezloader2)
-
 
 
 def download(login: deezloader2.Login2, id, quality="MP3_128") -> str:

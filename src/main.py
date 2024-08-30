@@ -46,6 +46,7 @@ else:
     print("Sorry, but your Operating System is not supported.")
     sys.exit()
 
+
 class NoArlDialog(QDialog):
     def __init__(self) -> None:
         super().__init__()
@@ -435,7 +436,9 @@ class SVGButton(QPushButton):
 
     def set_icon(self, svg_filename):
         self.svg_filename = f"{APP_DATA_PATH}svgs/{svg_filename}.svg"
-        self.icon = QIcon(svgUtils.create_colored_svg(self.svg_filename, self.text_color))
+        self.icon = QIcon(
+            svgUtils.create_colored_svg(self.svg_filename, self.text_color)
+        )
         self.setIcon(self.icon)
 
 
@@ -1027,7 +1030,9 @@ class MainWindow(QMainWindow):
         if f_tracks:
             try:
                 f_track_p.loadFromData(
-                    caching.albumCovers.download_small(self.deezpy_session, r_track.album.id)
+                    caching.albumCovers.download_small(
+                        self.deezpy_session, r_track.album.id
+                    )
                 )
             except deezer.exceptions.DeezerErrorResponse:
                 print("[W> Loading of f_track_p failed")
@@ -1291,10 +1296,14 @@ class MainWindow(QMainWindow):
             print("[D> Cleanup: Cleanup started")
             if cleanc_i1.isChecked():
                 print("[D> Cleanup: Cleaning Album covers (medium)")
-                caching.albumCovers.clear_ids(caching.albumCovers.get_cached(size="m"), size="m")
+                caching.albumCovers.clear_ids(
+                    caching.albumCovers.get_cached(size="m"), size="m"
+                )
             if cleanc_i2.isChecked():
                 print("[D> Cleanup: Cleaning Album covers (medium)")
-                caching.albumCovers.clear_ids(caching.albumCovers.get_cached(size="s"), size="s")
+                caching.albumCovers.clear_ids(
+                    caching.albumCovers.get_cached(size="s"), size="s"
+                )
             if cleanc_i3.isChecked():
                 print("[D> Cleanup: Cleaning Tracks (cached)")
                 caching.tracks.clear_ids(caching.tracks.get_cached())

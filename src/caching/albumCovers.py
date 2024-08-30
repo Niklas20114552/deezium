@@ -24,17 +24,15 @@ def download_small(login: deezer.Client, albumid: int) -> bytes:
     os.makedirs(
         os.path.expanduser("~/.cache/deezium/cover_ass"), exist_ok=True
     )  # "Album Size Small" not the human thingy
-    if os.path.exists(
-            os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid)
-    ):
+    if os.path.exists(os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid)):
         with open(
-                os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid), "rb"
+            os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid), "rb"
         ) as f:
             return f.read()
     album = login.get_album(albumid)
     content = requests.get(album.cover_small).content
     with open(
-            os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid), "wb"
+        os.path.expanduser("~/.cache/deezium/cover_ass/") + str(albumid), "wb"
     ) as f:
         f.write(content)
     return content
@@ -42,25 +40,21 @@ def download_small(login: deezer.Client, albumid: int) -> bytes:
 
 def download_medium(login: deezer.Client, albumid: int, getpath: bool = False):
     os.makedirs(os.path.expanduser("~/.cache/deezium/cover_asm"), exist_ok=True)
-    if os.path.exists(
-            os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid)
-    ):
+    if os.path.exists(os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid)):
         if getpath:
             return os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid)
         else:
             with open(
-                    os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid), "rb"
+                os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid), "rb"
             ) as f:
                 return f.read()
     album = login.get_album(albumid)
     content = requests.get(album.cover_medium).content
     with open(
-            os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid), "wb"
+        os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid), "wb"
     ) as f:
         f.write(content)
     if getpath:
         return os.path.expanduser("~/.cache/deezium/cover_asm/") + str(albumid)
     else:
         return content
-
-

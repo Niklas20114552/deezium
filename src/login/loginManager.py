@@ -12,9 +12,7 @@ def get_oauth_token():
 
 def gen_oauth_token(datapath: str, forced: bool = False):
     os.makedirs(os.path.expanduser("~/.config/deezium"), exist_ok=True)
-    if (
-        not os.path.exists(os.path.expanduser("~/.config/deezium/aro.dat"))
-    ) or forced:
+    if (not os.path.exists(os.path.expanduser("~/.config/deezium/aro.dat"))) or forced:
         os.system(
             f'python{'3' if platform.system() != 'Windows' else ''} "{datapath}oauth.py"'
         )
