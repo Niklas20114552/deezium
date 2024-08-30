@@ -1,69 +1,65 @@
 #!/usr/bin/python3
-import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re
-from PyQt5.QtCore import QUrl, pyqtSignal, Qt  # , QTimer
+import sys, os, platform, deezloader.exceptions, json, threading, subprocess, inspect, random, traceback, re, deezer, requests
+from PyQt5.QtCore import QUrl, pyqtSignal  # , QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtGui import QIcon, QFont, QPixmap, QCursor, QPainter
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, \
-    QLineEdit, QSlider, QProgressBar, QGroupBox, QScrollArea, QFrame, QCheckBox, QDialog, QTextEdit, QMenu
+from PyQt5.QtGui import QIcon, QFont, QPixmap, QCursor
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QSlider,
+    QProgressBar,
+    QGroupBox,
+    QScrollArea,
+    QFrame,
+    QCheckBox,
+    QDialog,
+    QTextEdit,
+    QMenu,
+)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtNetwork import QNetworkCookie
-from PyQt5.QtSvg import QSvgRenderer
 from configparser import ConfigParser
-from importlib.util import module_from_spec, spec_from_file_location
+
+import caching.albumCovers
+import caching.playlistCovers
+import caching.tracks
+import login.loginManager
+import utils
+import svgUtils
+import deezloader2
 
 config = ConfigParser()
 APP_DEVMODE: bool = False
 
 APP_NAME: str = "Deezium"
-if platform.system() == 'Windows':
+if platform.system() == "Windows":
     APP_DATA_PATH: str = "C:\\Program Files\\Deezium\\"
-elif platform.system() == 'Linux':
-    APP_DATA_PATH: str = '/usr/share/deezium/'
+elif platform.system() == "Linux":
+    APP_DATA_PATH: str = "/usr/share/deezium/"
 else:
-    print('Sorry, but your Operating System is not supported.')
+    print("Sorry, but your Operating System is not supported.")
     sys.exit()
-
-if len(sys.argv) > 1:
-    if sys.argv[1] == '--dev':
-        print('[D> Devmode enabled!')
-        APP_DEVMODE = True
-
-if not APP_DEVMODE:
-    import_spec = spec_from_file_location('api', APP_DATA_PATH + 'deezium_api.py')
-    api = module_from_spec(import_spec)
-    sys.modules['api'] = api
-    import_spec.loader.exec_module(api)
-else:
-    import deezium_api as api
-
-
-def create_colored_svg(svg_filename: str, text_color):
-    renderer = QSvgRenderer(svg_filename)
-    image_size = renderer.defaultSize()
-    image = QPixmap(image_size)
-    image.fill(Qt.transparent)  # Ensure transparency
-
-    painter = QPainter(image)
-    renderer.render(painter)
-    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-    painter.fillRect(image.rect(), text_color)
-    painter.end()
-
-    return image
-
 
 class NoArlDialog(QDialog):
     def __init__(self) -> None:
         super().__init__()
         self.main_layout = QVBoxLayout(self)
-        title = QLabel('No ARL could be imported')
+        title = QLabel("No ARL could be imported")
         title.setFont(QFont(title.font().family(), 12))
-        text1 = QLabel('While logging in no access token could be imported from your Deezer Account.')
-        text2 = QLabel('To properly use Deezium you must enter your access token:')
+        text1 = QLabel(
+            "While logging in no access token could be imported from your Deezer Account."
+        )
+        text2 = QLabel("To properly use Deezium you must enter your access token:")
         self.input = QLineEdit()
         self.input.setMaxLength(192)
-        self.input.setPlaceholderText('Enter your access token here')
-        self.confirm_button = QPushButton('Continue')
+        self.input.setPlaceholderText("Enter your access token here")
+        self.confirm_button = QPushButton("Continue")
         self.confirm_button.setDisabled(True)
 
         self.main_layout.addWidget(title)
@@ -79,7 +75,7 @@ class NoArlDialog(QDialog):
         self.confirm_button.setDisabled(not len(self.input.text()) == 192)
 
     def confirm(self):
-        with open(os.path.expanduser('~/.config/deezium/arl.dat'), 'w') as f:
+        with open(os.path.expanduser("~/.config/deezium/arl.dat"), "w") as f:
             f.write(self.input.text())
 
     def closeEvent(self, event) -> None:
@@ -91,12 +87,12 @@ class ErrorDialog(QDialog):
     def __init__(self, trb: str):
         super().__init__()
         self.main_layout = QVBoxLayout(self)
-        self.title = QLabel('Shit happens...')
+        self.title = QLabel("Shit happens...")
         self.title.setFont(QFont(self.title.font().family(), 18))
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setHtml("<pre>{}</pre>".format(trb))
-        self.okay_button = QPushButton('Okay')
+        self.okay_button = QPushButton("Okay")
         self.okay_button.clicked.connect(self.accept)
         self.main_layout.addWidget(self.title)
         self.main_layout.addWidget(self.log)
@@ -107,7 +103,7 @@ class QAlbumList(QWidget):
     album_clicked = pyqtSignal(int)
     artist_clicked = pyqtSignal(int)
 
-    def __init__(self, albumids: list[int], deezerclient: api.deezer.Client):
+    def __init__(self, albumids: list[int], deezerclient: deezer.Client):
         super().__init__()
         self.albumids = albumids
         self.cli = deezerclient
@@ -120,28 +116,31 @@ class QAlbumList(QWidget):
         for album in self.albumids:
             dt = {}
             album = self.cli.get_album(album)
-            dt['name'] = album.title
-            dt['artist'] = album.artist
-            dt['length'] = album.duration
+            dt["name"] = album.title
+            dt["artist"] = album.artist
+            dt["length"] = album.duration
             pix = QPixmap()
-            pix.loadFromData(api.download_albumcover_s(self.cli, album.id))
-            dt['icon-pixmap'] = pix
-            dt['dpy-album'] = album
+            pix.loadFromData(caching.albumCovers.download_small(self.cli, album.id))
+            dt["icon-pixmap"] = pix
+            dt["dpy-album"] = album
             self.data.append(dt)
 
     def construct_list(self):
         for album in self.data:
             row = QHBoxLayout()
             icon_label = QLabel()
-            icon_label.setPixmap(album['icon-pixmap'])
-            icon_label.mousePressEvent = lambda event, album_id=album['dpy-album'].id: (
-                self.album_clicked.emit(album_id))
+            icon_label.setPixmap(album["icon-pixmap"])
+            icon_label.mousePressEvent = lambda event, album_id=album["dpy-album"].id: (
+                self.album_clicked.emit(album_id)
+            )
             text_label = QLabel(f"<b>{album['name']}</b> -")
-            text_label.mousePressEvent = lambda event, album_id=album['dpy-album'].id: (
-                self.album_clicked.emit(album_id))
-            artist_label = QLabel(album['artist'].name)
-            artist_label.mousePressEvent = lambda event, artist_id=album['artist'].id: (
-                self.artist_clicked.emit(artist_id))
+            text_label.mousePressEvent = lambda event, album_id=album["dpy-album"].id: (
+                self.album_clicked.emit(album_id)
+            )
+            artist_label = QLabel(album["artist"].name)
+            artist_label.mousePressEvent = lambda event, artist_id=album["artist"].id: (
+                self.artist_clicked.emit(artist_id)
+            )
             duration = QLabel(f" (<i>{round(album['length'] / 60)} min long</i>)")
             row.addWidget(icon_label)
             row.addWidget(text_label)
@@ -154,7 +153,7 @@ class QAlbumList(QWidget):
 class QAlbumHList(QWidget):
     album_clicked = pyqtSignal(int)
 
-    def __init__(self, albumids: list[int], deezerclient: api.deezer.Client):
+    def __init__(self, albumids: list[int], deezerclient: deezer.Client):
         super().__init__()
         self.albumids = albumids
         self.cli = deezerclient
@@ -167,19 +166,21 @@ class QAlbumHList(QWidget):
         for album in self.albumids:
             dt = {}
             album = self.cli.get_album(album)
-            dt['name'] = album.title
-            dt['artist'] = album.artist
-            dt['id'] = album.id
+            dt["name"] = album.title
+            dt["artist"] = album.artist
+            dt["id"] = album.id
             pix = QPixmap()
-            pix.loadFromData(api.download_albumcover_m(self.cli, album.id))
-            dt['icon-pixmap'] = pix
+            pix.loadFromData(caching.albumCovers.download_medium(self.cli, album.id))
+            dt["icon-pixmap"] = pix
             self.data.append(dt)
 
     def construct_list(self):
         for album in self.data:
             icon_label = QLabel()
-            icon_label.setPixmap(album['icon-pixmap'])
-            icon_label.mousePressEvent = lambda event, album_id=album['id']: self.album_clicked.emit(album_id)
+            icon_label.setPixmap(album["icon-pixmap"])
+            icon_label.mousePressEvent = lambda event, album_id=album[
+                "id"
+            ]: self.album_clicked.emit(album_id)
             icon_label.setToolTip(f"{album['name']} - {album['artist'].name}")
             self.main_layout.addWidget(icon_label)
 
@@ -192,12 +193,12 @@ class QHClickList(QWidget):
         self.main_layout = QHBoxLayout(self)
         self.pixmap = pixmap
         self.title = title
-        self.lasttext = '(' + lasttext + ')'
+        self.lasttext = "(" + lasttext + ")"
         self.hovertext = hovertext
         self.construct_list()
 
     def construct_list(self):
-        title = QLabel('<b>' + self.title + '</b')
+        title = QLabel("<b>" + self.title + "</b")
         title.mousePressEvent = lambda event: self.action.emit()
         icon_label = QLabel()
         icon_label.setPixmap(self.pixmap)
@@ -214,7 +215,7 @@ class QHClickList(QWidget):
 class QArtistList(QWidget):
     artist_clicked = pyqtSignal(int)
 
-    def __init__(self, artistids: list[int], deezerclient: api.deezer.Client):
+    def __init__(self, artistids: list[int], deezerclient: deezer.Client):
         super().__init__()
         self.artistids = artistids
         self.cli = deezerclient
@@ -227,23 +228,25 @@ class QArtistList(QWidget):
         for artist in self.artistids:
             dt = {}
             artist = self.cli.get_artist(artist)
-            dt['name'] = artist.name
+            dt["name"] = artist.name
             pix = QPixmap()
-            pix.loadFromData(api.requests.get(artist.picture_small).content)
-            dt['icon-pixmap'] = pix
-            dt['dpy-artist'] = artist
+            pix.loadFromData(requests.get(artist.picture_small).content)
+            dt["icon-pixmap"] = pix
+            dt["dpy-artist"] = artist
             self.data.append(dt)
 
     def construct_list(self):
         for artist in self.data:
             row = QHBoxLayout()
             icon_label = QLabel()
-            icon_label.setPixmap(artist['icon-pixmap'])
-            icon_label.mousePressEvent = lambda event, artist_id=artist['dpy-artist'].id: (
-                self.artist_clicked.emit(artist_id))
+            icon_label.setPixmap(artist["icon-pixmap"])
+            icon_label.mousePressEvent = lambda event, artist_id=artist[
+                "dpy-artist"
+            ].id: (self.artist_clicked.emit(artist_id))
             text_label = QLabel(f"<b>{artist['name']}</b>")
-            text_label.mousePressEvent = lambda event, artist_id=artist['dpy-artist'].id: (
-                self.artist_clicked.emit(artist_id))
+            text_label.mousePressEvent = lambda event, artist_id=artist[
+                "dpy-artist"
+            ].id: (self.artist_clicked.emit(artist_id))
             row.addWidget(icon_label)
             row.addWidget(text_label)
             row.addStretch()
@@ -258,8 +261,14 @@ class QTrackList(QWidget):
     add_queue = pyqtSignal(int)
     add_playlist = pyqtSignal(int)
 
-    def __init__(self, trackids: list[int], deezerclient: api.deezer.Client, show_album: bool = True,
-                 show_icons: bool = True, show_artist: bool = True):
+    def __init__(
+        self,
+        trackids: list[int],
+        deezerclient: deezer.Client,
+        show_album: bool = True,
+        show_icons: bool = True,
+        show_artist: bool = True,
+    ):
         super().__init__()
         self.trackids = trackids
         self.cli = deezerclient
@@ -267,7 +276,9 @@ class QTrackList(QWidget):
         self.show_album = show_album
         self.show_icons = show_icons
         self.show_artist = show_artist
-        self.favorites: list[int] = api.conv_paginated_ids(deezerclient.get_user_tracks())
+        self.favorites: list[int] = utils.conv_paginated_ids(
+            deezerclient.get_user_tracks()
+        )
         self.construct_items()
         self.main_layout = QVBoxLayout(self)
         self.construct_list()
@@ -278,74 +289,89 @@ class QTrackList(QWidget):
             track = self.cli.get_track(trackid)
             if trackid > 0 and track.album.id != 0:
                 try:
-                    dt['name'] = track.title
-                    dt['artist'] = track.artist
-                    dt['length'] = track.duration
-                    dt['album'] = track.album
-                    dt['album-art'] = track.album.artist
+                    dt["name"] = track.title
+                    dt["artist"] = track.artist
+                    dt["length"] = track.duration
+                    dt["album"] = track.album
+                    dt["album-art"] = track.album.artist
                     if self.show_icons:
                         pix = QPixmap()
-                        pix.loadFromData(api.download_albumcover_s(self.cli, track.album.id))
-                        dt['icon-pixmap'] = pix
-                    dt['dpy-track'] = track
+                        pix.loadFromData(
+                            caching.albumCovers.download_small(self.cli, track.album.id)
+                        )
+                        dt["icon-pixmap"] = pix
+                    dt["dpy-track"] = track
                     self.data.append(dt)
-                except api.deezer.exceptions.DeezerErrorResponse:
-                    print('[E> Failed processing ' + str(trackid) + ' on deezers end')
-                    print(f'[TRB> AlbumId: {track.album.id} ArtistId {track.artist.id}')
+                except deezer.exceptions.DeezerErrorResponse:
+                    print("[E> Failed processing " + str(trackid) + " on deezers end")
+                    print(f"[TRB> AlbumId: {track.album.id} ArtistId {track.artist.id}")
 
     def update_fav(self):
-        self.favorites = api.conv_paginated_ids(self.cli.get_user_tracks())
+        self.favorites = utils.conv_paginated_ids(self.cli.get_user_tracks())
 
     def construct_list(self):
         for track in self.data:
+
             def openmenu():
                 self.update_fav()
                 menu = QMenu(self)
-                if track['dpy-track'].id in self.favorites:
-                    fav = menu.addAction('Remove from &favorites')
+                if track["dpy-track"].id in self.favorites:
+                    fav = menu.addAction("Remove from &favorites")
                 else:
-                    fav = menu.addAction('Add to &favorites')
-                queue = menu.addAction('Add to &queue')
-                playlist = menu.addAction('Add to &playlist')
+                    fav = menu.addAction("Add to &favorites")
+                queue = menu.addAction("Add to &queue")
+                playlist = menu.addAction("Add to &playlist")
 
-                fav.triggered.connect(lambda event, tid=track['dpy-track'].id: self.toggle_fav.emit(tid))
-                queue.triggered.connect(lambda event, tid=track['dpy-track'].id: self.add_queue.emit(tid))
-                playlist.triggered.connect(lambda event, tid=track['dpy-track'].id: self.add_playlist.emit(tid))
+                fav.triggered.connect(
+                    lambda event, tid=track["dpy-track"].id: self.toggle_fav.emit(tid)
+                )
+                queue.triggered.connect(
+                    lambda event, tid=track["dpy-track"].id: self.add_queue.emit(tid)
+                )
+                playlist.triggered.connect(
+                    lambda event, tid=track["dpy-track"].id: self.add_playlist.emit(tid)
+                )
 
                 buttonpos = QCursor.pos()
                 menu.exec_(buttonpos)
 
             row = QHBoxLayout()
             text_label = QLabel(f"<b>{track['name']}</b> -")
-            text_label.mousePressEvent = lambda event, track_id=track['dpy-track'].id: (
-                self.track_clicked.emit(track_id))
+            text_label.mousePressEvent = lambda event, track_id=track["dpy-track"].id: (
+                self.track_clicked.emit(track_id)
+            )
             duration = QLabel(f" (<i>{round(track['length'] / 60)} min long</i>)")
-            show_menu_button = SVGButton('more')
+            show_menu_button = SVGButton("more")
             show_menu_button.setFixedSize(30, 30)
             show_menu_button.clicked.connect(openmenu)
 
             if self.show_icons:
                 icon_label = QLabel()
-                icon_label.setPixmap(track['icon-pixmap'])
-                icon_label.mousePressEvent = lambda event, track_id=track['dpy-track'].id: (
-                    self.track_clicked.emit(track_id))
+                icon_label.setPixmap(track["icon-pixmap"])
+                icon_label.mousePressEvent = lambda event, track_id=track[
+                    "dpy-track"
+                ].id: (self.track_clicked.emit(track_id))
                 row.addWidget(icon_label)
 
             row.addWidget(text_label)
 
             if self.show_artist:
-                artist_label = QLabel(track['artist'].name)
-                artist_label.mousePressEvent = lambda event, artist_id=track['artist'].id: (
-                    self.artist_clicked.emit(artist_id))
+                artist_label = QLabel(track["artist"].name)
+                artist_label.mousePressEvent = lambda event, artist_id=track[
+                    "artist"
+                ].id: (self.artist_clicked.emit(artist_id))
                 row.addWidget(artist_label)
 
             row.addWidget(duration)
             row.addStretch()
 
             if self.show_album:
-                album_label = QLabel(f"in <b>{track['album'].title}</b> by <i>{track['album-art'].name}</i>")
-                album_label.mousePressEvent = lambda event, album_id=track['album'].id: (
-                    self.album_clicked.emit(album_id))
+                album_label = QLabel(
+                    f"in <b>{track['album'].title}</b> by <i>{track['album-art'].name}</i>"
+                )
+                album_label.mousePressEvent = lambda event, album_id=track[
+                    "album"
+                ].id: (self.album_clicked.emit(album_id))
                 row.addWidget(album_label)
 
             row.addWidget(show_menu_button)
@@ -355,7 +381,7 @@ class QTrackList(QWidget):
 class QPlayList(QWidget):
     playlist_clicked = pyqtSignal(int)
 
-    def __init__(self, listids: list[int], deezerclient: api.deezer.Client):
+    def __init__(self, listids: list[int], deezerclient: deezer.Client):
         super().__init__()
         self.listids = listids
         self.cli = deezerclient
@@ -368,26 +394,28 @@ class QPlayList(QWidget):
         for playlist in self.listids:
             dt = {}
             playlist = self.cli.get_playlist(playlist)
-            dt['name'] = playlist.title
-            dt['length'] = playlist.duration
-            dt['author'] = playlist.creator
+            dt["name"] = playlist.title
+            dt["length"] = playlist.duration
+            dt["author"] = playlist.creator
             pix = QPixmap()
-            pix.loadFromData(api.requests.get(playlist.picture_small).content)
-            dt['icon-pixmap'] = pix
-            dt['dpy-track'] = playlist
+            pix.loadFromData(requests.get(playlist.picture_small).content)
+            dt["icon-pixmap"] = pix
+            dt["dpy-track"] = playlist
             self.data.append(dt)
 
     def construct_list(self):
         for playlist in self.data:
             row = QHBoxLayout()
             icon_label = QLabel()
-            icon_label.setPixmap(playlist['icon-pixmap'])
-            icon_label.mousePressEvent = lambda event, artist_id=playlist['author'].id: (
-                self.playlist_clicked.emit(artist_id))
+            icon_label.setPixmap(playlist["icon-pixmap"])
+            icon_label.mousePressEvent = lambda event, artist_id=playlist[
+                "author"
+            ].id: (self.playlist_clicked.emit(artist_id))
             text_label = QLabel(f"<b>{playlist['name']}</b> -")
-            text_label.mousePressEvent = lambda event, artist_id=playlist['author'].id: (
-                self.playlist_clicked.emit(artist_id))
-            artist_label = QLabel(playlist['author'].name)
+            text_label.mousePressEvent = lambda event, artist_id=playlist[
+                "author"
+            ].id: (self.playlist_clicked.emit(artist_id))
+            artist_label = QLabel(playlist["author"].name)
             duration = QLabel(f" (<i>{round(playlist['length'] / 60)} min long</i>)")
             row.addWidget(icon_label)
             row.addWidget(text_label)
@@ -401,13 +429,13 @@ class SVGButton(QPushButton):
     def __init__(self, svg_filename):
         super().__init__()
         self.text_color = self.palette().color(self.foregroundRole())
-        self.svg_filename = ''
+        self.svg_filename = ""
         self.icon = QIcon()
         self.set_icon(svg_filename)
 
     def set_icon(self, svg_filename):
         self.svg_filename = f"{APP_DATA_PATH}svgs/{svg_filename}.svg"
-        self.icon = QIcon(create_colored_svg(self.svg_filename, self.text_color))
+        self.icon = QIcon(svgUtils.create_colored_svg(self.svg_filename, self.text_color))
         self.setIcon(self.icon)
 
 
@@ -415,19 +443,19 @@ class SVGLabel(QLabel):
     def __init__(self, svg_filename):
         super().__init__()
         self.text_color = self.palette().color(self.foregroundRole())
-        self.svg_filename = ''
+        self.svg_filename = ""
         self.icon = QIcon()
         self.set_icon(svg_filename)
 
     def set_icon(self, svg_filename):
         self.svg_filename = f"{APP_DATA_PATH}svgs/{svg_filename}.svg"
-        self.setPixmap(create_colored_svg(self.svg_filename, self.text_color))
+        self.setPixmap(svgUtils.create_colored_svg(self.svg_filename, self.text_color))
 
 
 class ProgressDialog(QDialog):
     def __init__(self, text):
         super().__init__()
-        self.setWindowIcon(QIcon(APP_DATA_PATH + 'deezium.png'))
+        self.setWindowIcon(QIcon(APP_DATA_PATH + "deezium.png"))
         self.setWindowTitle(APP_NAME)
         self.setFixedHeight(55)
         layout = QVBoxLayout()
@@ -443,7 +471,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setWindowIcon(QIcon(APP_DATA_PATH + 'deezium.png'))
+        self.setWindowIcon(QIcon(APP_DATA_PATH + "deezium.png"))
         self.setMinimumSize(800, 600)
         self.deezpy_session = None
         self.deezdw_session = None
@@ -466,16 +494,16 @@ class MainWindow(QMainWindow):
         self.play_nowplaying = QLabel()
         self.play_seeker = QSlider(1)
         self.play_seeker.setMinimumWidth(400)
-        self.play_pauseb = SVGButton('play')
+        self.play_pauseb = SVGButton("play")
         self.play_pauseb.setFixedSize(30, 30)
-        self.play_forb = SVGButton('next')
-        self.play_preb = SVGButton('prev')
+        self.play_forb = SVGButton("next")
+        self.play_preb = SVGButton("prev")
         self.play_forb.setFixedSize(30, 30)
         self.play_preb.setFixedSize(30, 30)
-        self.play_loopb = SVGButton('repeat')
+        self.play_loopb = SVGButton("repeat")
         self.play_loopb.setFixedSize(30, 30)
         self.play_state = QLabel()
-        self.play_volume_indicator = SVGLabel('volume')
+        self.play_volume_indicator = SVGLabel("volume")
         self.play_volume = QSlider(1)
         self.play_volume.setRange(10, 100)
         self.play_volume.setValue(75)
@@ -505,7 +533,7 @@ class MainWindow(QMainWindow):
         self.play_layout.addWidget(self.play_volume)
         self.play_layout.addWidget(self.play_loopb)
 
-        print('[D> Main loading')
+        print("[D> Main loading")
         self.update_config()
         if bool(self.config_arl) and bool(self.config_aro):
             self.login()
@@ -513,22 +541,22 @@ class MainWindow(QMainWindow):
             self.createLoginPage()
 
     def read_playstate(self):
-        if os.path.exists(os.path.expanduser('~/.config/deezium/lastplay')):
+        if os.path.exists(os.path.expanduser("~/.config/deezium/lastplay")):
             try:
-                with open(os.path.expanduser('~/.config/deezium/lastplay'), 'r') as f:
+                with open(os.path.expanduser("~/.config/deezium/lastplay"), "r") as f:
                     ldata = f.read()
                 data = json.loads(ldata)
-                self.play_currentlist = data['current_play']
-                self.streamtrackid(data['current_id'], start=False)
-                self.play_looping = data['looping']
+                self.play_currentlist = data["current_play"]
+                self.streamtrackid(data["current_id"], start=False)
+                self.play_looping = data["looping"]
                 self.update_loopbutton()
-                self.player.setPosition(data['position'])
-                self.player.setVolume(data['volume'])
-                self.play_volume.setValue(data['volume'])
-                self.play_seeker.setValue(data['position'])
+                self.player.setPosition(data["position"])
+                self.player.setVolume(data["volume"])
+                self.play_volume.setValue(data["volume"])
+                self.play_seeker.setValue(data["position"])
             except KeyError:
-                print('[E> Invalid State removed')
-                os.remove(os.path.expanduser('~/.config/deezium/lastplay'))
+                print("[E> Invalid State removed")
+                os.remove(os.path.expanduser("~/.config/deezium/lastplay"))
 
     def update_mediastate(self, mstate):
         if mstate == QMediaPlayer.EndOfMedia:
@@ -549,17 +577,19 @@ class MainWindow(QMainWindow):
 
     def update_loopbutton(self):
         if self.play_looping == 0:
-            self.play_loopb.set_icon('repeat')
+            self.play_loopb.set_icon("repeat")
         elif self.play_looping == 1:
-            self.play_loopb.set_icon('repeat_on')
+            self.play_loopb.set_icon("repeat_on")
         elif self.play_looping == 2:
-            self.play_loopb.set_icon('repeat_one')
+            self.play_loopb.set_icon("repeat_one")
 
     def skip_forward(self, by=1):
         if not by:
             by = 1
         currenti = self.play_currentlist.index(int(self.play_currenttrack))
-        self.streamtrackid(self.play_currentlist[(currenti + by) % len(self.play_currentlist)])
+        self.streamtrackid(
+            self.play_currentlist[(currenti + by) % len(self.play_currentlist)]
+        )
 
     def skip_backward(self, by=1):
         if not by:
@@ -569,14 +599,18 @@ class MainWindow(QMainWindow):
 
     def streamtrackid(self, tid, start=True, historize=True):
         self.play_currenttrack = tid
-        path = api.download_track(self.deezdw_session, tid)
+        path = caching.tracks.download(self.deezdw_session, tid)
         self.player.setMedia(QMediaContent(QUrl.fromLocalFile(path)))
         if start:
             self.player.play()
         self.update_player(self.player.state())
-        bg = api.calc_background_color(api.download_albumcover_m(self.deezpy_session, self.deezpy_session.get_track(tid).album.id))
-        fg = api.calc_foreground_color(bg)
-        self.play_widget.setStyleSheet(f'background-color: {bg}; color: {fg}')
+        bg = utils.calc_background_color(
+            caching.albumCovers.download_medium(
+                self.deezpy_session, self.deezpy_session.get_track(tid).album.id
+            )
+        )
+        fg = utils.calc_foreground_color(bg)
+        self.play_widget.setStyleSheet(f"background-color: {bg}; color: {fg}")
         if historize:
             albumid = self.deezpy_session.get_track(tid).album.id
             self.insert_history(albumid)
@@ -615,7 +649,7 @@ class MainWindow(QMainWindow):
 
     def toggle_favorite_track(self, tid):
         def toggle():
-            ids = api.conv_paginated_ids(self.deezpy_session.get_user_tracks())
+            ids = utils.conv_paginated_ids(self.deezpy_session.get_user_tracks())
             if tid in ids:
                 self.deezpy_session.remove_user_track(tid)
             else:
@@ -628,19 +662,21 @@ class MainWindow(QMainWindow):
 
     def update_player(self, state):
         if state == QMediaPlayer.PlayingState:
-            self.play_pauseb.set_icon('pause')
+            self.play_pauseb.set_icon("pause")
         else:
-            self.play_pauseb.set_icon('play')
+            self.play_pauseb.set_icon("play")
         index = self.play_currentlist.index(self.play_currenttrack)
         self.play_preb.setDisabled(index == 0)
-        self.play_forb.setDisabled((index == len(self.play_currentlist)) or (self.play_looping == 2))
+        self.play_forb.setDisabled(
+            (index == len(self.play_currentlist)) or (self.play_looping == 2)
+        )
         if self.play_currenttrack:
             track = self.deezpy_session.get_track(self.play_currenttrack)
-            self.play_nowplaying.setText(f'<b>{track.title}</b> - {track.artist.name}')
+            self.play_nowplaying.setText(f"<b>{track.title}</b> - {track.artist.name}")
 
     def set_seeker(self, lenght):
         def buffer():
-            api.download_track(self.deezdw_session, nxtid)
+            caching.tracks.download(self.deezdw_session, nxtid)
 
         self.play_seeker.setRange(0, lenght)
 
@@ -657,7 +693,9 @@ class MainWindow(QMainWindow):
     def update_seeker(self, duration):
         """Updates the Timestamp next to the seeker to the correct time."""
         self.play_seeker.setValue(duration)
-        self.play_state.setText(api.ms_to_str(duration) + '/' + api.ms_to_str(self.player.duration()))
+        self.play_state.setText(
+            utils.ms_to_str(duration) + "/" + utils.ms_to_str(self.player.duration())
+        )
 
     def playback(self):
         if self.player.state() == QMediaPlayer.PlayingState:
@@ -672,38 +710,38 @@ class MainWindow(QMainWindow):
 
     def login(self):
         """Prepares the player to load the main page and loads old playing state"""
-        print('[D> Initializing Sessions')
+        print("[D> Initializing Sessions")
         self.init_sessions()
-        print('[D> Creating Main Page')
+        print("[D> Creating Main Page")
         try:
             self.createMainPage()
-        except api.deezer.exceptions.DeezerErrorResponse:
-            os.remove(os.path.expanduser('~/.config/deezium/aro.dat'))
+        except deezer.exceptions.DeezerErrorResponse:
+            os.remove(os.path.expanduser("~/.config/deezium/aro.dat"))
             self.update_config()
             self.createLoginFailedPage()
         self.logged_in = True
-        print('[D> Restoring state')
+        print("[D> Restoring state")
         self.read_playstate()
 
     def init_sessions(self):
         """Initializes the two online api sessions and if necessary kick back to log in"""
-        os.makedirs(os.path.expanduser('~/.cache/deezium/'), exist_ok=True)
-        os.chdir(os.path.expanduser('~/.cache/deezium/'))
+        os.makedirs(os.path.expanduser("~/.cache/deezium/"), exist_ok=True)
+        os.chdir(os.path.expanduser("~/.cache/deezium/"))
         logout = False
         if not self.deezdw_session:
             try:
-                self.deezdw_session = api.deezloader2.Login2(self.config_arl)
+                self.deezdw_session = deezloader2.Login2(self.config_arl)
             except ValueError:
-                os.remove(os.path.expanduser('~/.config/deezium/arl.dat'))
+                os.remove(os.path.expanduser("~/.config/deezium/arl.dat"))
                 logout = True
             except deezloader.exceptions.BadCredentials:
-                os.remove(os.path.expanduser('~/.config/deezium/arl.dat'))
+                os.remove(os.path.expanduser("~/.config/deezium/arl.dat"))
                 logout = True
         if not self.deezpy_session:
             try:
-                self.deezpy_session = api.deezer.Client(access_token=self.config_aro)
-            except api.deezer.exceptions.DeezerErrorResponse:
-                os.remove(os.path.expanduser('~/.config/deezium/aro.dat'))
+                self.deezpy_session = deezer.Client(access_token=self.config_aro)
+            except deezer.exceptions.DeezerErrorResponse:
+                os.remove(os.path.expanduser("~/.config/deezium/aro.dat"))
                 logout = True
         if logout:
             self.update_config()
@@ -711,26 +749,26 @@ class MainWindow(QMainWindow):
 
     def update_config(self):
         """READs the config and updates the two token variables accordingly"""
-        self.config_aro = api.get_oauth_token()
-        self.config_arl = api.get_login_token()
-        if os.path.exists(os.path.expanduser('~/.config/deezium/history')):
-            with open(os.path.expanduser('~/.config/deezium/history'), 'r') as f:
+        self.config_aro = login.loginManager.get_oauth_token()
+        self.config_arl = login.loginManager.get_login_token()
+        if os.path.exists(os.path.expanduser("~/.config/deezium/history")):
+            with open(os.path.expanduser("~/.config/deezium/history"), "r") as f:
                 self.history = json.loads(f.read())
-        print('[D> Config read')
+        print("[D> Config read")
 
     @staticmethod
     def logout() -> None:
         """Logs out and clears the stored authentication data"""
-        api.logout()
+        login.loginManager.logout()
         subprocess.Popen(os.path.abspath(inspect.getsourcefile(lambda: 0)))
         sys.exit()
 
     def run_oauth(self) -> None:
         """Runs the web oauth server for deezer login"""
-        api.gen_oauth_token(APP_DATA_PATH)
+        login.loginManager.gen_oauth_token(APP_DATA_PATH)
         self.update_config()
 
-    def createLoginFailedPage(self, errcode: str = ''):
+    def createLoginFailedPage(self, errcode: str = ""):
         """Creates the error page for the login"""
         main_widget = QWidget()
         main_layout = QHBoxLayout(main_widget)
@@ -743,11 +781,11 @@ class MainWindow(QMainWindow):
         title.setFont(QFont(title.font().family(), 15))
         subtitle = QLabel()
         if errcode:
-            subtitle.setText('Error Code: ' + errcode)
+            subtitle.setText("Error Code: " + errcode)
         else:
-            subtitle.setText('An unknown Error occured.')
+            subtitle.setText("An unknown Error occured.")
 
-        backbutton = QPushButton('Back')
+        backbutton = QPushButton("Back")
         backbutton.clicked.connect(self.createLoginPage)
 
         v_layout.addStretch()
@@ -760,13 +798,14 @@ class MainWindow(QMainWindow):
 
     def createWebLoginPage(self):
         """Creates the web-based login page"""
+
         def process_return(html):
             """Runs when the html was fully loaded. Processes the html to find the success or error message."""
             if html is None:
                 self.closeLocked = False
                 return
-            match = re.match('Error: ([a-zA-Z]*). You may close this tab now', html)
-            if html == 'Valid. You may close this tab now':
+            match = re.match("Error: ([a-zA-Z]*). You may close this tab now", html)
+            if html == "Valid. You may close this tab now":
                 self.closeLocked = False
                 self.update_config()
                 if not bool(self.config_arl):
@@ -776,7 +815,7 @@ class MainWindow(QMainWindow):
                     else:
                         self.close()
                 self.login()
-            elif html == 'Something went wrong. You may close this tab now':
+            elif html == "Something went wrong. You may close this tab now":
                 self.closeLocked = False
                 self.createLoginFailedPage()
             elif match:
@@ -789,34 +828,41 @@ class MainWindow(QMainWindow):
             name = bytearray(cookie.name()).decode()
             domain = cookie.domain()
             value = bytearray(cookie.value()).decode()
-            if name == 'arl' and domain == '.deezer.com' and len(value) == 192:
-                print('[D> Arl found and imported.')
-                with open(os.path.expanduser('~/.config/deezium/arl.dat'), 'w') as f:
+            if name == "arl" and domain == ".deezer.com" and len(value) == 192:
+                print("[D> Arl found and imported.")
+                with open(os.path.expanduser("~/.config/deezium/arl.dat"), "w") as f:
                     f.write(value)
 
         def load_finished():
             """Runs when the html was fully loaded and calls the parser with parts out of the html"""
-            login_webengine.page().runJavaScript("document.getElementsByTagName('pre')[0].innerHTML;", process_return)
+            login_webengine.page().runJavaScript(
+                "document.getElementsByTagName('pre')[0].innerHTML;", process_return
+            )
 
         def abort():
             """Aborts the login process by sending one request to the oauth server to shut it down"""
             try:
-                api.requests.get('http://localhost:3875')
-            except api.requests.exceptions.ConnectionError:
+                requests.get("http://localhost:3875")
+            except requests.exceptions.ConnectionError:
                 pass
             self.createLoginPage()
 
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
 
-        abort_button = QPushButton('Abort login')
+        abort_button = QPushButton("Abort login")
         abort_button.clicked.connect(abort)
 
         login_webengine = QWebEngineView()
-        login_webengine.load(QUrl(
-            'https://connect.deezer.com/oauth/auth.php?app_id=663691&redirect_uri=http://localhost:3875/&perms=basic_access,email,offline_access,manage_library,manage_community,delete_library,listening_history'))
+        login_webengine.load(
+            QUrl(
+                "https://connect.deezer.com/oauth/auth.php?app_id=663691&redirect_uri=http://localhost:3875/&perms=basic_access,email,offline_access,manage_library,manage_community,delete_library,listening_history"
+            )
+        )
         login_webengine.loadFinished.connect(load_finished)
-        login_webengine.page().profile().cookieStore().cookieAdded.connect(process_added_cookie)
+        login_webengine.page().profile().cookieStore().cookieAdded.connect(
+            process_added_cookie
+        )
 
         main_layout.addWidget(abort_button)
         main_layout.addWidget(login_webengine)
@@ -825,6 +871,7 @@ class MainWindow(QMainWindow):
 
     def createLoginPage(self):
         """Creates the login page"""
+
         def login():
             """Prepares and runs the background job for the oauth server"""
             self.closeLocked = True
@@ -844,7 +891,7 @@ class MainWindow(QMainWindow):
         login_mlayout.addLayout(login2_layout)
         login_mlayout.addStretch()
 
-        group_box = QGroupBox('Login')
+        group_box = QGroupBox("Login")
         group_layout = QVBoxLayout()
         group_box.setLayout(group_layout)
 
@@ -856,7 +903,7 @@ class MainWindow(QMainWindow):
 
         logo_layout = QHBoxLayout()
         logo = QLabel()
-        logop = QPixmap(APP_DATA_PATH + 'deezium256.png')
+        logop = QPixmap(APP_DATA_PATH + "deezium256.png")
         logo.setPixmap(logop)
         login_title = QLabel(APP_NAME)
         login_title.setFont(QFont(login_title.font().family(), 20))
@@ -868,16 +915,16 @@ class MainWindow(QMainWindow):
         group_layout.addLayout(logo_layout)
         group_layout.addLayout(title_layout)
 
-        login_button = QPushButton('Login with Deezer')
-        login_button.setIcon(QIcon(APP_DATA_PATH + 'deezer_logo.png'))
+        login_button = QPushButton("Login with Deezer")
+        login_button.setIcon(QIcon(APP_DATA_PATH + "deezer_logo.png"))
         group_layout.addWidget(login_button)
 
-        disclaimer = QGroupBox('Disclaimer')
+        disclaimer = QGroupBox("Disclaimer")
         dis_layout = QVBoxLayout()
-        dis_layout.addWidget(QLabel('<b>NOT AFFILIATED WITH DEEZER</b>'))
-        dis_layout.addWidget(QLabel('The Author of this program is'))
-        dis_layout.addWidget(QLabel('not responsible for the usage'))
-        dis_layout.addWidget(QLabel('of this program by other people.'))
+        dis_layout.addWidget(QLabel("<b>NOT AFFILIATED WITH DEEZER</b>"))
+        dis_layout.addWidget(QLabel("The Author of this program is"))
+        dis_layout.addWidget(QLabel("not responsible for the usage"))
+        dis_layout.addWidget(QLabel("of this program by other people."))
         dis_layout.addWidget(QLabel())
         dis_layout.addWidget(QLabel("The Author does not recommend"))
         dis_layout.addWidget(QLabel("you doing this illegally or"))
@@ -901,6 +948,7 @@ class MainWindow(QMainWindow):
 
     def createMainPage(self):
         """Creates the main page or "home" page or "favorites" page"""
+
         def search():
             query = searchbar.text()
             self.createSearchresultPage(query)
@@ -915,14 +963,14 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        title_text = QLabel('Your Favorites')
+        title_text = QLabel("Your Favorites")
         title_text.setFont(QFont(title_text.font().family(), 16))
         title_layout.addWidget(title_text)
         title_layout.addStretch()
         searchbar = QLineEdit()
-        searchbar.setPlaceholderText('Search for music and audiobooks')
-        searchbutton = QPushButton('Search')
-        settings_button = SVGButton('settings')
+        searchbar.setPlaceholderText("Search for music and audiobooks")
+        searchbutton = QPushButton("Search")
+        settings_button = SVGButton("settings")
         settings_button.setFixedSize(30, 30)
         settings_button.clicked.connect(self.createSettingsPage)
         title_layout.addWidget(searchbar)
@@ -935,46 +983,61 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(title_layout)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout()
         scroll_widget.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_widget)
 
-        history_label = QLabel('History')
+        history_label = QLabel("History")
         history_label.setFont(QFont(history_label.font().family(), 14))
 
         if self.history:
             history_widget = QScrollArea()
             history_widget.setWidgetResizable(True)
-            history_swidget = QAlbumHList(self.history, deezerclient=self.deezpy_session)
+            history_swidget = QAlbumHList(
+                self.history, deezerclient=self.deezpy_session
+            )
             history_swidget.album_clicked.connect(album_clicked)
             history_widget.setWidget(history_swidget)
 
         else:
-            history_widget = QLabel("There's no history here. So you have to write history now, then.")
+            history_widget = QLabel(
+                "There's no history here. So you have to write history now, then."
+            )
 
-        f_title = QLabel('Favorites')
+        f_title = QLabel("Favorites")
         f_title.setFont(QFont(history_label.font().family(), 14))
 
         f_albums = self.deezpy_session.get_user_albums()
         f_album_p = QPixmap()
         if f_albums:
-            f_album_p.loadFromData(api.download_albumcover_s(self.deezpy_session, f_albums[0].id))
-        f_album_w = QHClickList('Albums', f_album_p, f'{f_albums.total} albums total',
-                                f'{f_albums[0].title} - {f_albums[0].artist.name}')
+            f_album_p.loadFromData(
+                caching.albumCovers.download_small(self.deezpy_session, f_albums[0].id)
+            )
+        f_album_w = QHClickList(
+            "Albums",
+            f_album_p,
+            f"{f_albums.total} albums total",
+            f"{f_albums[0].title} - {f_albums[0].artist.name}",
+        )
 
         f_tracks = self.deezpy_session.get_user_tracks()
         f_track_p = QPixmap()
         r_track = random.choice(f_tracks)
         if f_tracks:
             try:
-                f_track_p.loadFromData(api.download_albumcover_s(self.deezpy_session, r_track.album.id))
-            except api.deezer.exceptions.DeezerErrorResponse:
-                print('[W> Loading of f_track_p failed')
+                f_track_p.loadFromData(
+                    caching.albumCovers.download_small(self.deezpy_session, r_track.album.id)
+                )
+            except deezer.exceptions.DeezerErrorResponse:
+                print("[W> Loading of f_track_p failed")
 
-        f_track_w = QHClickList('Tracks', f_track_p, f'{f_tracks.total} tracks total',
-                                f'{r_track.title} - {r_track.artist.name}')
+        f_track_w = QHClickList(
+            "Tracks",
+            f_track_p,
+            f"{f_tracks.total} tracks total",
+            f"{r_track.title} - {r_track.artist.name}",
+        )
         f_track_w.action.connect(show_ftracks)
 
         scroll_layout.addWidget(history_label)
@@ -992,6 +1055,7 @@ class MainWindow(QMainWindow):
 
     def createSearchresultPage(self, query):
         """Searches deezer and creates the search results page"""
+
         def search():
             query = searchbar.text()
             self.createSearchresultPage(query)
@@ -1012,17 +1076,17 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = SVGButton('back')
+        back_button = SVGButton("back")
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
-        title_text = QLabel('Search - Results for ' + query)
+        title_text = QLabel("Search - Results for " + query)
         title_text.setFont(QFont(title_text.font().family(), 16))
         title_layout.addWidget(title_text)
         title_layout.addStretch()
         searchbar = QLineEdit()
-        searchbar.setPlaceholderText('Search for music and audiobooks')
-        searchbutton = QPushButton('Search')
+        searchbar.setPlaceholderText("Search for music and audiobooks")
+        searchbutton = QPushButton("Search")
         searchbar.setText(query)
         title_layout.addWidget(searchbar)
         title_layout.addWidget(searchbutton)
@@ -1034,13 +1098,12 @@ class MainWindow(QMainWindow):
 
         search_area = QScrollArea()
         search_area.setWidgetResizable(True)
-        search_area.setFrameShape(QFrame.NoFrame)
         search_widget = QWidget()
         search_layout = QVBoxLayout()
         search_widget.setLayout(search_layout)
         search_area.setWidget(search_widget)
 
-        alb_title = QLabel('Albums')
+        alb_title = QLabel("Albums")
         alb_title.setFont(QFont(title_text.font().family(), 14))
         album_search = []
         for s in self.deezpy_session.search_albums(query):
@@ -1048,25 +1111,31 @@ class MainWindow(QMainWindow):
         if len(album_search) == 0:
             album_widget = QLabel("No results found. Here's a note for you: 🎵")
         else:
-            album_widget = QAlbumList(album_search[:5], deezerclient=self.deezpy_session)
+            album_widget = QAlbumList(
+                album_search[:5], deezerclient=self.deezpy_session
+            )
             album_widget.album_clicked.connect(album_clicked)
             album_widget.artist_clicked.connect(artist_clicked)
 
-        track_title = QLabel('Tracks')
+        track_title = QLabel("Tracks")
         track_title.setFont(QFont(title_text.font().family(), 14))
         track_search = []
         for s in self.deezpy_session.search(query):
             track_search.append(s.id)
         if len(track_search) == 0:
-            track_widget = QLabel("No results found. Here's a banana for you: 🍌") # as the creator of this program,
+            track_widget = QLabel(
+                "No results found. Here's a banana for you: 🍌"
+            )  # as the creator of this program,
             #                                                                        i dont like bananas. accept it!
         else:
-            track_widget = QTrackList(track_search[:5], deezerclient=self.deezpy_session)
+            track_widget = QTrackList(
+                track_search[:5], deezerclient=self.deezpy_session
+            )
             track_widget.album_clicked.connect(album_clicked)
             track_widget.artist_clicked.connect(artist_clicked)
             track_widget.track_clicked.connect(track_clicked)
 
-        art_title = QLabel('Artists')
+        art_title = QLabel("Artists")
         art_title.setFont(QFont(title_text.font().family(), 14))
         artist_search = []
         for s in self.deezpy_session.search_artists(query):
@@ -1074,10 +1143,12 @@ class MainWindow(QMainWindow):
         if len(artist_search) == 0:
             artist_widget = QLabel("No results found. Here's a tree for you: 🌲")
         else:
-            artist_widget = QArtistList(artist_search[:5], deezerclient=self.deezpy_session)
+            artist_widget = QArtistList(
+                artist_search[:5], deezerclient=self.deezpy_session
+            )
             artist_widget.artist_clicked.connect(artist_clicked)
 
-        pl_title = QLabel('Playlists')
+        pl_title = QLabel("Playlists")
         pl_title.setFont(QFont(title_text.font().family(), 14))
         playlist_search = []
         for s in self.deezpy_session.search_playlists(query):
@@ -1085,7 +1156,9 @@ class MainWindow(QMainWindow):
         if len(playlist_search) == 0:
             playlist_widget = QLabel("No results found. Here's a cat for you: 🐱")
         else:
-            playlist_widget = QPlayList(playlist_search[:5], deezerclient=self.deezpy_session)
+            playlist_widget = QPlayList(
+                playlist_search[:5], deezerclient=self.deezpy_session
+            )
             playlist_widget.playlist_clicked.connect(playlist_clicked)
 
         search_layout.addWidget(alb_title)
@@ -1120,20 +1193,20 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
         album = self.deezpy_session.get_album(albumid)
         tracks = album.get_tracks()
-        trackids = api.conv_paginated_ids(tracks)
+        trackids = utils.conv_paginated_ids(tracks)
 
         title_layout = QHBoxLayout()
-        back_button = SVGButton('back')
+        back_button = SVGButton("back")
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
-        title_text = QLabel(album.title + ' - ' + album.artist.name)
+        title_text = QLabel(album.title + " - " + album.artist.name)
         title_text.setFont(QFont(title_text.font().family(), 16))
         title_layout.addWidget(title_text)
         title_layout.addStretch()
         searchbar = QLineEdit()
-        searchbar.setPlaceholderText('Search for music and audiobooks')
-        searchbutton = QPushButton('Search')
+        searchbar.setPlaceholderText("Search for music and audiobooks")
+        searchbutton = QPushButton("Search")
         title_layout.addWidget(searchbar)
         title_layout.addWidget(searchbutton)
 
@@ -1142,7 +1215,6 @@ class MainWindow(QMainWindow):
 
         search_area = QScrollArea()
         search_area.setWidgetResizable(True)
-        search_area.setFrameShape(QFrame.NoFrame)
         search_widget = QWidget()
         search_layout = QVBoxLayout()
         search_widget.setLayout(search_layout)
@@ -1152,7 +1224,9 @@ class MainWindow(QMainWindow):
 
         cover = QLabel()
         cover_pixmap = QPixmap()
-        cover_pixmap.loadFromData(api.download_albumcover_m(self.deezpy_session, album.id))
+        cover_pixmap.loadFromData(
+            caching.albumCovers.download_medium(self.deezpy_session, album.id)
+        )
         cover.setPixmap(cover_pixmap)
         header_layout.addWidget(cover)
 
@@ -1160,13 +1234,15 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(sidepanel_layout)
         header_layout.addStretch()
 
-        tit_label = QLabel(f'<b>Number of titles:</b> {tracks.total}')
-        len_label = QLabel(f'<b>Length:</b> {api.convert_sec_to_min(album.duration)}')
-        rel_label = QLabel(f'<b>Release date:</b> {album.release_date.strftime("%Y-%m-%d")}')
-        play_button = QPushButton('Play album')
+        tit_label = QLabel(f"<b>Number of titles:</b> {tracks.total}")
+        len_label = QLabel(f"<b>Length:</b> {utils.convert_sec_to_min(album.duration)}")
+        rel_label = QLabel(
+            f'<b>Release date:</b> {album.release_date.strftime("%Y-%m-%d")}'
+        )
+        play_button = QPushButton("Play album")
         play_button.clicked.connect(play)
-        author_button = QPushButton('Visit ' + album.artist.name)
-        clean_button = QPushButton('Clean cached tracks')
+        author_button = QPushButton("Visit " + album.artist.name)
+        clean_button = QPushButton("Clean cached tracks")
         sidepanel_layout.addWidget(tit_label)
         sidepanel_layout.addWidget(len_label)
         sidepanel_layout.addWidget(rel_label)
@@ -1176,7 +1252,9 @@ class MainWindow(QMainWindow):
 
         search_layout.addLayout(header_layout)
 
-        track_widget = QTrackList(trackids, deezerclient=self.deezpy_session, show_album=False)
+        track_widget = QTrackList(
+            trackids, deezerclient=self.deezpy_session, show_album=False
+        )
         track_widget.track_clicked.connect(playitem)
         # track_widget.add_playlist.
         # track_widget.add_queue.
@@ -1194,79 +1272,86 @@ class MainWindow(QMainWindow):
 
     def createSettingsPage(self):
         def update_cbutton():
-            cleanc_button.setDisabled(not (cleanc_i1.isChecked() or cleanc_i2.isChecked() or cleanc_i3.isChecked()))
+            cleanc_button.setDisabled(
+                not (
+                    cleanc_i1.isChecked()
+                    or cleanc_i2.isChecked()
+                    or cleanc_i3.isChecked()
+                )
+            )
             if cleanc_i1.isChecked() or cleanc_i2.isChecked() or cleanc_i3.isChecked():
-                cleanc_button.setStyleSheet('color: white; background-color: #a50003')
+                cleanc_button.setStyleSheet("color: white; background-color: #a50003")
             else:
-                cleanc_button.setStyleSheet('')
+                cleanc_button.setStyleSheet("")
 
         def cbutton_clicked():
             cleanc_i1.setChecked(False)
             cleanc_i2.setChecked(False)
             cleanc_i3.setChecked(False)
-            print('[D> Cleanup: Cleanup started')
+            print("[D> Cleanup: Cleanup started")
             if cleanc_i1.isChecked():
-                print('[D> Cleanup: Cleaning Album covers (medium)')
-                api.clean_albumcovers(api.get_cached_albumcovers(size='m'), size='m')
+                print("[D> Cleanup: Cleaning Album covers (medium)")
+                caching.albumCovers.clear_ids(caching.albumCovers.get_cached(size="m"), size="m")
             if cleanc_i2.isChecked():
-                print('[D> Cleanup: Cleaning Album covers (medium)')
-                api.clean_albumcovers(api.get_cached_albumcovers(size='s'), size='s')
+                print("[D> Cleanup: Cleaning Album covers (medium)")
+                caching.albumCovers.clear_ids(caching.albumCovers.get_cached(size="s"), size="s")
             if cleanc_i3.isChecked():
-                print('[D> Cleanup: Cleaning Tracks (cached)')
-                api.clean_trackids(api.get_cached_tracks())
-            print('[D> Cleanup: Finished')
+                print("[D> Cleanup: Cleaning Tracks (cached)")
+                caching.tracks.clear_ids(caching.tracks.get_cached())
+            print("[D> Cleanup: Finished")
             sys.exit()
 
         def chbutton_clicked():
-            print('[D> Cleanup: Cleaning History')
-            os.remove(os.path.expanduser('~/.config/deezium/history'))
-            os.remove(os.path.expanduser('~/.config/deezium/lastplay'))
+            print("[D> Cleanup: Cleaning History")
+            os.remove(os.path.expanduser("~/.config/deezium/history"))
+            os.remove(os.path.expanduser("~/.config/deezium/lastplay"))
             sys.exit()
 
         main_widget = QWidget()
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = SVGButton('back')
+        back_button = SVGButton("back")
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
-        title_text = QLabel('Settings')
+        title_text = QLabel("Settings")
         title_text.setFont(QFont(title_text.font().family(), 16))
         title_layout.addWidget(title_text)
 
         search_area = QScrollArea()
         search_area.setWidgetResizable(True)
-        search_area.setFrameShape(QFrame.NoFrame)
         search_widget = QWidget()
         search_layout = QVBoxLayout()
         search_widget.setLayout(search_layout)
         search_area.setWidget(search_widget)
 
-        account_box = QGroupBox('Account')
+        account_box = QGroupBox("Account")
         account_layout = QVBoxLayout(account_box)
-        account_name = QLabel('Currently logged in as ' + self.deezpy_session.get_user().name)
-        logout_button = QPushButton('Log out')
-        logout_button.setStyleSheet('color: white; background-color: #a50003')
+        account_name = QLabel(
+            "Currently logged in as " + self.deezpy_session.get_user().name
+        )
+        logout_button = QPushButton("Log out")
+        logout_button.setStyleSheet("color: white; background-color: #a50003")
         logout_button.clicked.connect(self.logout)
         account_layout.addWidget(account_name)
         account_layout.addWidget(logout_button)
 
-        data_box = QGroupBox('Data managment')
+        data_box = QGroupBox("Data managment")
         data_layout = QVBoxLayout(data_box)
-        cleanc_title = QLabel('Clean cached data:')
+        cleanc_title = QLabel("Clean cached data:")
         cleanc_subtitle = QLabel("Anything below can't be reverted!")
-        cleanc_i1 = QCheckBox('Album covers (medium)')
-        cleanc_i2 = QCheckBox('Album covers (small)')
-        cleanc_i3 = QCheckBox('Tracks (cached)')
+        cleanc_i1 = QCheckBox("Album covers (medium)")
+        cleanc_i2 = QCheckBox("Album covers (small)")
+        cleanc_i3 = QCheckBox("Tracks (cached)")
         cleanc_i1.toggled.connect(update_cbutton)
         cleanc_i2.toggled.connect(update_cbutton)
         cleanc_i3.toggled.connect(update_cbutton)
-        cleanc_button = QPushButton('Clear data and close')
-        cleanc_button.setStyleSheet('')
+        cleanc_button = QPushButton("Clear data and close")
+        cleanc_button.setStyleSheet("")
         cleanc_button.setDisabled(True)
         cleanc_button.clicked.connect(cbutton_clicked)
-        cleanc_label = QLabel('Cleaning can take a while')
+        cleanc_label = QLabel("Cleaning can take a while")
         data_layout.addWidget(cleanc_subtitle)
         data_layout.addWidget(cleanc_title)
         data_layout.addWidget(cleanc_i1)
@@ -1275,7 +1360,7 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(cleanc_button)
         data_layout.addWidget(cleanc_label)
 
-        cleanh_button = QPushButton('Clear history and close')
+        cleanh_button = QPushButton("Clear history and close")
         cleanh_button.clicked.connect(chbutton_clicked)
         data_layout.addWidget(cleanh_button)
 
@@ -1290,7 +1375,9 @@ class MainWindow(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
-    def createPlaylistPage(self, tracks: api.deezer.PaginatedList[api.deezer.Track], ptype: str = 'fa'):
+    def createPlaylistPage(
+        self, tracks: deezer.PaginatedList[deezer.Track], ptype: str = "fa"
+    ):
         def playitem(tid):
             self.playlist(pl_trackids, first=tid)
 
@@ -1302,16 +1389,18 @@ class MainWindow(QMainWindow):
             self.createSearchresultPage(query)
 
         pl_coverpix = QPixmap()
-        if ptype == 'fa':
-            pl_title = 'Favorite Tracks'
+        if ptype == "fa":
+            pl_title = "Favorite Tracks"
             pl_author = self.deezpy_session.get_user().name
-            with open(APP_DATA_PATH + 'favorite.png', 'rb') as f:
+            with open(APP_DATA_PATH + "favorite.png", "rb") as f:
                 pl_coverpix.loadFromData(f.read())
         else:
             pl = self.deezpy_session.get_playlist(ptype)
             pl_title = pl.title
             pl_author = pl.creator.name
-            pl_coverpix.loadFromData(api.download_playlcover_m(self.deezpy_session, pl.id))
+            pl_coverpix.loadFromData(
+                caching.playlistCovers.download_medium(self.deezpy_session, pl.id)
+            )
 
         pl_trackids = []
         pl_length = 0
@@ -1324,17 +1413,17 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         title_layout = QHBoxLayout()
-        back_button = SVGButton('back')
+        back_button = SVGButton("back")
         back_button.clicked.connect(self.createMainPage)
         back_button.setFixedSize(30, 30)
         title_layout.addWidget(back_button)
-        title_text = QLabel(pl_title + ' - ' + pl_author)
+        title_text = QLabel(pl_title + " - " + pl_author)
         title_text.setFont(QFont(title_text.font().family(), 16))
         title_layout.addWidget(title_text)
         title_layout.addStretch()
         searchbar = QLineEdit()
-        searchbar.setPlaceholderText('Search for music and audiobooks')
-        searchbutton = QPushButton('Search')
+        searchbar.setPlaceholderText("Search for music and audiobooks")
+        searchbutton = QPushButton("Search")
         title_layout.addWidget(searchbar)
         title_layout.addWidget(searchbutton)
 
@@ -1343,7 +1432,6 @@ class MainWindow(QMainWindow):
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout()
         scroll_widget.setLayout(scroll_layout)
@@ -1359,12 +1447,12 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(sidepanel_layout)
         header_layout.addStretch()
 
-        tit_label = QLabel(f'<b>Number of titles:</b> {pl_totalt}')
-        len_label = QLabel(f'<b>Length:</b> {api.convert_sec_to_min(pl_length)}')
-        play_button = QPushButton('Play playlist')
+        tit_label = QLabel(f"<b>Number of titles:</b> {pl_totalt}")
+        len_label = QLabel(f"<b>Length:</b> {utils.convert_sec_to_min(pl_length)}")
+        play_button = QPushButton("Play playlist")
         play_button.clicked.connect(play)
-        author_button = QPushButton('Visit ' + pl_author)
-        clean_button = QPushButton('Clean cached tracks')
+        author_button = QPushButton("Visit " + pl_author)
+        clean_button = QPushButton("Clean cached tracks")
         sidepanel_layout.addWidget(tit_label)
         sidepanel_layout.addWidget(len_label)
         sidepanel_layout.addWidget(play_button)
@@ -1378,7 +1466,7 @@ class MainWindow(QMainWindow):
             track_widget.track_clicked.connect(playitem)
             track_widget.toggle_fav.connect(self.toggle_favorite_track)
         else:
-            track_widget = QLabel('This playlist is empty.')
+            track_widget = QLabel("This playlist is empty.")
         scroll_layout.addWidget(track_widget)
 
         main_layout.addLayout(title_layout)
@@ -1390,20 +1478,26 @@ class MainWindow(QMainWindow):
 
     def save_history(self):
         if self.logged_in and self.play_currentlist != [] and self.play_currenttrack:
-            print('[D> State saved')
-            os.makedirs(os.path.expanduser('~/.config/deezium/'), exist_ok=True)
-            json_data = json.dumps({'current_id': self.play_currenttrack, 'current_play': self.play_currentlist,
-                                    'looping': self.play_looping, 'position': self.player.position(),
-                                    'volume': self.player.volume()})
-            with open(os.path.expanduser('~/.config/deezium/lastplay'), 'w') as f:
+            print("[D> State saved")
+            os.makedirs(os.path.expanduser("~/.config/deezium/"), exist_ok=True)
+            json_data = json.dumps(
+                {
+                    "current_id": self.play_currenttrack,
+                    "current_play": self.play_currentlist,
+                    "looping": self.play_looping,
+                    "position": self.player.position(),
+                    "volume": self.player.volume(),
+                }
+            )
+            with open(os.path.expanduser("~/.config/deezium/lastplay"), "w") as f:
                 f.write(json_data)
-            with open(os.path.expanduser('~/.config/deezium/history'), 'w') as f:
+            with open(os.path.expanduser("~/.config/deezium/history"), "w") as f:
                 f.write(json.dumps(self.history))
 
     def closeEvent(self, event):
         if not self.closeLocked:
-            if os.path.exists(os.path.expanduser('~/.cache/deezium/.cache')):
-                os.remove(os.path.expanduser('~/.cache/deezium/.cache'))
+            if os.path.exists(os.path.expanduser("~/.cache/deezium/.cache")):
+                os.remove(os.path.expanduser("~/.cache/deezium/.cache"))
             self.save_history()
             super().closeEvent(event)
         else:
@@ -1419,29 +1513,11 @@ def format_traceback(trb: str):
 
 def main(argv):
     app = QApplication(sys.argv)
-    app.setDesktopFileName('deezium')
+    app.setDesktopFileName("deezium")
 
     try:
         deezium = MainWindow()
         deezium.show()
-
-        if api.MprisAppAdapter:
-            import gi
-            gi.require_version('GLib', '2.0')
-            from gi.repository import GLib
-
-            def glib_mainloop_iteration(loop):
-                # Single iteration of the GLib main loop
-                loop.get_context().iteration(False)
-                return True
-            # my_adapter = api.MprisAppAdapter(window=deezium)
-            # mpris = api.Server('Deezium', adapter=my_adapter)
-            # event_handler = api.AppEventHandler(root=mpris.root, player=mpris.player)
-
-            # main_loop = GLib.MainLoop()
-            # timer = QTimer()
-            # timer.timeout.connect(lambda: glib_mainloop_iteration(main_loop))
-            # timer.start(10)
 
     except Exception:
         trb = traceback.format_exc()

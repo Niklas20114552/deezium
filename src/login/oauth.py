@@ -25,7 +25,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b'Something went wrong. You may close this tab now')
         print('[E> OAuth - Something went wrong')
     
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, format: str, *args) -> None:
         pass
         
 def _returnval(rturnval):

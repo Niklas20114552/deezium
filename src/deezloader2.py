@@ -1,6 +1,5 @@
 import deezloader
 from tqdm import tqdm
-from deezloader.others_settings import answers
 from os.path import isfile
 from deezloader import(
 	utils, methods, exceptions,
