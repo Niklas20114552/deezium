@@ -1,33 +1,66 @@
 import os
-import platform
+import deezloader.exceptions
+import src.deezloader2
+import deezer
 
 
-def get_oauth_token():
-    os.makedirs(os.path.expanduser("~/.config/deezium"), exist_ok=True)
-    if os.path.exists(os.path.expanduser("~/.config/deezium/aro.dat")):
-        with open(os.path.expanduser("~/.config/deezium/aro.dat"), "r") as f:
-            return f.read()
-    return False
+class LoginManager:
+    def __init__(self, session_id, datapath):
+        self.logged_in = False
+        self.login_arl = ""
+        self.login_aro = ""
 
+        self.deezer = ""
+        self.deezloader = ""
 
-def gen_oauth_token(datapath: str, forced: bool = False):
-    os.makedirs(os.path.expanduser("~/.config/deezium"), exist_ok=True)
-    if (not os.path.exists(os.path.expanduser("~/.config/deezium/aro.dat"))) or forced:
-        os.system(
-            f'python{'3' if platform.system() != 'Windows' else ''} "{datapath}oauth.py"'
-        )
+        self.session_id = session_id
+        self.session_path = os.path.expanduser(f'~/.config/deezium/{session_id}')
+        self.datapath = datapath
+        
+        os.makedirs(self.session_path, exist_ok=True)
+        self.login()
 
+    def login(self):
+        if os.path.exists(f"{self.session_path}/aro.dat") and os.path.exists(f"{self.session_path}/arl.dat"):
+            with open(f"{self.session_path}/arl.dat", "r") as f:
+                self.login_arl = f.read()
+            with open(f"{self.session_path}/aro.dat", "r") as f:
+                self.login_aro = f.read()
 
-def get_login_token():
-    os.makedirs(os.path.expanduser("~/.config/deezium"), exist_ok=True)
-    if os.path.exists(os.path.expanduser("~/.config/deezium/arl.dat")):
-        with open(os.path.expanduser("~/.config/deezium/arl.dat"), "r") as f:
-            return f.read()
-    return False
+            try:
+                self.deezloader = src.deezloader2.Login2(self.login_arl)
+            except ValueError:
+                os.remove(f"{self.session_path}/arl.dat")
+                return self.session_logout()
+            except deezloader.exceptions.BadCredentials:
+                os.remove(f"{self.session_path}/arl.dat")
+                return self.session_logout()
 
+            try:
+                self.deezer = deezer.Client(access_token=self.login_aro)
+            except deezer.exceptions.DeezerErrorResponse:
+                os.remove(f"{self.session_path}/aro.dat")
+                return self.session_logout()
 
-def logout():
-    if os.path.exists(os.path.expanduser("~/.config/deezium/arl.dat")):
-        os.remove(os.path.expanduser("~/.config/deezium/arl.dat"))
-    if os.path.exists(os.path.expanduser("~/.config/deezium/aro.dat")):
-        os.remove(os.path.expanduser("~/.config/deezium/aro.dat"))
+            self.logged_in = True
+        else:
+            self.logged_in = False
+            print('[W> Not every needed file to login is present')
+
+    def session_logout(self):
+        self.login_aro = ""
+        self.login_arl = ""
+        self.logged_in = False
+
+    def full_logout(self):
+        self.session_logout()
+        if os.path.exists(f"{self.session_path}/arl.dat"):
+            os.remove(f"{self.session_path}/arl.dat")
+        if os.path.exists(f"{self.session_path}/aro.dat"):
+            os.remove(f"{self.session_path}/aro.dat")
+
+    def host_oauth_server(self, forced: bool = False):
+        if (not os.path.exists(os.path.expanduser(f"{self.session_path}/aro.dat"))) or forced:
+            os.system(
+                f'python "{self.datapath}oauth.py" {self.session_id}'
+            )

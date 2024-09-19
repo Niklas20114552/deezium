@@ -1,10 +1,12 @@
 import http.server, re, socketserver, sys, os, requests
 
+
 def _pathval(path, name):
     pattern = re.compile(rf'[\&|\?]{name}=([^\&\#]+)')
     match = re.search(pattern, path)
     if match:
         return match.groups()[0]
+
 
 class _RequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -27,16 +29,18 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
     
     def log_message(self, format: str, *args) -> None:
         pass
-        
+
+
 def _returnval(rturnval):
     response = requests.get(f'https://connect.deezer.com/oauth/access_token.php?app_id=663691&secret=e133f3d457427cc05b0dffbeadbae890&code={rturnval}')
     if response.status_code == 200:
         match = re.search(re.compile(r'access_token=([^&]*)'), response.text)
         if match:
-            with open(os.path.expanduser('~/.config/deezium/aro.dat'), 'w') as f:
+            with open(os.path.expanduser(f'~/.config/deezium/{sys.argv[1]}/aro.dat'), 'w') as f:
                 f.write(match.groups()[0])
             sys.exit()
     sys.exit()
+
 
 hserver = socketserver.TCPServer(('localhost', 3875), _RequestHandler)
 print('[D> OAuth - Serving')
