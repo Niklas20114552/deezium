@@ -1,4 +1,11 @@
-# Deezium
+# This project is archived
+
+The libraries used by Deezium are no longer maintained and the code is clunky.  
+I won't be maintaining Deezium anymore.
+
+If you need a solid python library for interacting with Deezer, I can recommend you my own library [DeezerGW](https://github.com/tabbeddev/deezergw)
+
+# Original README (Deezium)
 
 An alternative open-source lightweight graphical front-end for [Deezer](https://deezer.com).
 
